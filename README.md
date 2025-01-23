@@ -18,9 +18,6 @@ Realtime Digital Filter Design is an interactive desktop application that allows
   - Add conjugates for complex elements (optional).
   - Zero-pole swapping feature.
   - Undo/redo for all operations.
-- **Save/Load Functionality**:
-  - Save the designed filter to a file (Notepad or CSV).
-  - Load a previously saved filter for further editing.
 
 ### Filter Realization and Export
 - **Filter Realization**:
@@ -65,7 +62,7 @@ Realtime Digital Filter Design is an interactive desktop application that allows
 ## Installation
 1. Clone this repository:
    ```bash
-   git clone https://github.com/username/realtime-digital-filter-design.git
+   git clone (https://github.com/PavlyAwad/Realtime-Digital-Filter.git)
    ```
 2. Navigate to the project directory:
    ```bash
@@ -121,22 +118,11 @@ This project is licensed under the MIT License. See the LICENSE file for details
 
 ---
 
-## Contributing
-Contributions are welcome! Please follow these steps:
-1. Fork this repository.
-2. Create a new branch (`feature-branch-name`).
-3. Commit your changes.
-4. Push to the branch.
-5. Create a Pull Request.
+# **🌐 Contributors**
+- [Ziad Mohamed](https://github.com/Ziadmohammed200)  
+- [Marcilino Adel](https://github.com/marcilino-adel)  
+- [Ahmed Etman](https://github.com/AhmedEtma)  
+- [Pavly Awad](https://github.com/PavlyAwad)  
+- [Ahmed Rafat](https://github.com/AhmeedRaafatt)  
 
----
-
-## Future Enhancements
-- Add more filter types to the built-in library.
-- Extend support for 3D visualization of frequency responses.
-- Integration with hardware for live input/output signals.
-
----
-
-Enjoy designing your custom filters with ease and precision!
 
