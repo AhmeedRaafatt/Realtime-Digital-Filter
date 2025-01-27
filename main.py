@@ -60,6 +60,14 @@ class FilterDesignApp(QMainWindow):
 
         self.selected_point = None
         self.selected_type = None
+
+        self.all_pass_filters = {
+            "First-Order All-Pass": {"zeros": [0.5 + 0j], "poles": [2.0 + 0j]},
+            "Second-Order All-Pass": {"zeros": [0.5 + 0.5j, 0.5 - 0.5j], "poles": [2.0 + 2.0j, 2.0 - 2.0j]},
+            }
+        
+        
+
         self.initialize_ui()
 
     def create_plot_canvas(self):
@@ -266,6 +274,27 @@ class FilterDesignApp(QMainWindow):
     def on_click(self, event):
         if event.inaxes != self.z_plane_ax:
             return
+
+        # Check if the user right-clicked (delete action)
+        if event.button == 3:  # Right-click
+            for idx, z in enumerate(self.zeros):
+                if abs(z.real - event.xdata) < 0.05 and abs(z.imag - event.ydata) < 0.05:
+                    del self.zeros[idx]  # Delete the zero
+                    self.save_to_history()
+                    self.plot_z_plane()
+                    self.plot_frequency_response()
+                    self.plot_phase_response()
+                    return
+
+            for idx, p in enumerate(self.poles):
+                if abs(p.real - event.xdata) < 0.05 and abs(p.imag - event.ydata) < 0.05:
+                    del self.poles[idx]  # Delete the pole
+                    self.save_to_history()
+                    self.plot_z_plane()
+                    self.plot_frequency_response()
+                    self.plot_phase_response()
+                    return
+
         for idx, z in enumerate(self.zeros):
             if abs(z.real - event.xdata) < 0.05 and abs(z.imag - event.ydata) < 0.05:
                 self.selected_point = idx
