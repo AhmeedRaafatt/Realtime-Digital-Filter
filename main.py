@@ -19,7 +19,7 @@ from scipy.signal import zpk2sos
 import csv
 
 import sys
-import numpy as np
+import numpy as np  
 import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
@@ -29,6 +29,9 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QCursor
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from scipy.signal import zpk2tf, lfilter
+
+import numpy as np
+from scipy.signal import butter, cheby1, ellip, bessel, zpk2tf, tf2zpk
 
 class FilterDesignApp(QMainWindow):
     def __init__(self):
@@ -62,11 +65,15 @@ class FilterDesignApp(QMainWindow):
         self.selected_type = None
 
         self.all_pass_filters = {
-            "First-Order All-Pass": {"zeros": [0.5 + 0j], "poles": [2.0 + 0j]},
-            "Second-Order All-Pass": {"zeros": [0.5 + 0.5j, 0.5 - 0.5j], "poles": [2.0 + 2.0j, 2.0 - 2.0j]},
-            }
+            "Butterworth": self.get_butterworth_filter,
+            "Chebyshev Type I": self.get_chebyshev_filter,
+            "Elliptic": self.get_elliptic_filter,
+            "Bessel": self.get_bessel_filter
+        }
         
+        self.all_pass_filters_libraries = []
         
+        self.active_all_pass_filters = [] # for storing active all pass filters 
 
         self.initialize_ui()
 
@@ -128,12 +135,99 @@ class FilterDesignApp(QMainWindow):
         self.add_buttons()
         self.add_sliders()
         self.add_checkboxes_and_comboboxes()
+
+        # All-Pass filter controls
+
+        self.enable_all_pass_checkbox = QCheckBox("Enable All-Pass Filters")
+        
+        self.controls_layout.addWidget(self.enable_all_pass_checkbox)
+        
+        self.all_pass_combobox = QComboBox()
+        self.all_pass_combobox.addItems(self.all_pass_filters.keys())
+        self.all_pass_combobox.currentIndexChanged.connect(self.apply_selected_all_pass_filter)
+        self.controls_layout.addWidget(QLabel("All-Pass Filters"))
+        self.controls_layout.addWidget(self.all_pass_combobox)
+
+        self.a_slider = QSlider(Qt.Horizontal)
+        self.a_slider.setMinimum(0)
+        self.a_slider.setMaximum(100)  # Set max to 100 for more precision
+        self.a_slider.setValue(50)
+        
+        self.a_slider.valueChanged.connect(self.updateLabel)
+        self.value_label = QLabel('"A" Value : 0.50', self)
+        self.controls_layout.addWidget(self.value_label)
+        self.controls_layout.addWidget(self.a_slider)
+
+
+        self.add_all_pass_button = QPushButton("Add All-Pass Filter")
+        self.add_all_pass_button.clicked.connect(self.add_all_pass_filter)
+        self.controls_layout.addWidget(self.add_all_pass_button)
+
+        
+
         # self.add_editable_table()
         self.plot_z_plane()
         self.plot_frequency_response()
         self.plot_phase_response()
 
+        
 
+    def updateLabel(self, value):
+        self.value_label.setText(f'"A" Value : {value / 100:.2f}')
+        
+
+    # def add_all_pass_filter(self):
+    #     selected_filter = self.all_pass_combobox.currentText()
+    #     if selected_filter in self.all_pass_filters:
+    #         self.active_all_pass_filters.append(self.all_pass_filters[selected_filter])
+    #         self.plot_z_plane()
+    #         self.plot_frequency_response()
+    #         self.plot_phase_response()
+
+    # def toggle_all_pass_filters(self):
+    #     if self.enable_all_pass_checkbox.isChecked():
+    #         # Combine All-Pass filters with the main filter
+    #         self.plot_z_plane()
+    #         self.plot_frequency_response()
+    #         self.plot_phase_response()
+    #     else:
+    #         # Plot only the main filter
+    #         self.plot_z_plane()
+    #         self.plot_frequency_response()
+    #         self.plot_phase_response()
+            
+    def apply_selected_all_pass_filter(self, index):
+        # Get the selected filter function
+        filter_name = self.all_pass_combobox.currentText()
+        if filter_name in self.all_pass_filters:
+            zeros, poles = self.all_pass_filters[filter_name]()
+            # Add to existing poles and zeros
+            self.poles.extend(poles)
+            self.zeros.extend(zeros)
+            # Update all plots
+            self.plot_z_plane()
+            self.plot_frequency_response()
+            self.plot_phase_response()
+
+    def get_butterworth_filter(self):
+        b, a = butter(1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
+
+    def get_chebyshev_filter(self):
+        b, a = cheby1(1, 1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
+
+    def get_elliptic_filter(self):
+        b, a = ellip(1, 1, 10, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
+
+    def get_bessel_filter(self):
+        b, a = bessel(1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
+
+    def extract_zeros_poles(self, b, a):
+        z, p, k = tf2zpk(b, a)  # Correct function to extract zeros, poles, and gain
+        return z, p
 
     def add_buttons(self):
         # Horizontal layout for buttons
@@ -277,6 +371,7 @@ class FilterDesignApp(QMainWindow):
 
         # Check if the user right-clicked (delete action)
         if event.button == 3:  # Right-click
+            # Check main filter zeros
             for idx, z in enumerate(self.zeros):
                 if abs(z.real - event.xdata) < 0.05 and abs(z.imag - event.ydata) < 0.05:
                     del self.zeros[idx]  # Delete the zero
@@ -286,6 +381,7 @@ class FilterDesignApp(QMainWindow):
                     self.plot_phase_response()
                     return
 
+            # Check main filter poles
             for idx, p in enumerate(self.poles):
                 if abs(p.real - event.xdata) < 0.05 and abs(p.imag - event.ydata) < 0.05:
                     del self.poles[idx]  # Delete the pole
@@ -294,6 +390,21 @@ class FilterDesignApp(QMainWindow):
                     self.plot_frequency_response()
                     self.plot_phase_response()
                     return
+
+            # Check All-Pass filters' zeros and poles
+            # for apf_idx, apf in enumerate(self.active_all_pass_filters):
+            #     for idx, z in enumerate(apf["zeros"]):
+            #         if abs(z.real - event.xdata) < 0.05 and abs(z.imag - event.ydata) < 0.05:
+            #             self.selected_point = idx
+            #             self.selected_type = "all_pass_zero"
+            #             self.selected_apf_idx = apf_idx  # Store the index of the selected All-Pass filter
+            #             return
+            #     for idx, p in enumerate(apf["poles"]):
+            #         if abs(p.real - event.xdata) < 0.05 and abs(p.imag - event.ydata) < 0.05:
+            #             self.selected_point = idx
+            #             self.selected_type = "all_pass_pole"
+            #             self.selected_apf_idx = apf_idx  # Store the index of the selected All-Pass filter
+            #             return
 
         for idx, z in enumerate(self.zeros):
             if abs(z.real - event.xdata) < 0.05 and abs(z.imag - event.ydata) < 0.05:
@@ -309,21 +420,29 @@ class FilterDesignApp(QMainWindow):
     def on_motion(self, event):
         if event.inaxes != self.z_plane_ax or self.selected_point is None:
             return
+
         new_position = complex(event.xdata, event.ydata)
         if abs(new_position) > 1.5:  # Boundary check
             return
+
         if self.selected_type == "zero":
             self.zeros[self.selected_point] = new_position
         elif self.selected_type == "pole":
             self.poles[self.selected_point] = new_position
+        # elif self.selected_type == "all_pass_zero":
+        #     self.active_all_pass_filters[self.selected_apf_idx]["zeros"][self.selected_point] = new_position
+        # elif self.selected_type == "all_pass_pole":
+        #     self.active_all_pass_filters[self.selected_apf_idx]["poles"][self.selected_point] = new_position
+
         self.plot_z_plane()
         self.plot_frequency_response()
-
+    
     def on_release(self, event):
         if self.selected_point is not None:
             self.save_to_history()
         self.selected_point = None
         self.selected_type = None
+        self.selected_apf_idx = None  # Reset the selected All-Pass filter index
 
     def clear_zeros(self):
         self.zeros.clear()
@@ -409,12 +528,41 @@ class FilterDesignApp(QMainWindow):
                 file.write("// Zeros: {}\n".format(self.zeros))
                 file.write("// Poles: {}\n".format(self.poles))
 
+    def add_all_pass_filter(self):
+    # Ensure that the checkbox is checked before proceeding
+        
+        if self.enable_all_pass_checkbox.isChecked():
+            # Get the value of 'a' from the slider
+            a = self.a_slider.value() / 100  # Scale to [0, 1]
+
+            # Define the all-pass filter poles and zeros
+            # For simplicity, assuming a single pair of complex conjugate poles/zeros based on 'a'
+            # Customize this if you want to add more poles/zeros depending on the filter design.
+            all_pass_zero = complex(a, 0)
+            all_pass_pole = complex(1/a, 0)
+
+            # Add the all-pass filter's zero and pole
+            self.zeros.append(all_pass_zero)
+            self.poles.append(all_pass_pole)
+
+            # Update the pole-zero diagram and frequency response after adding the filter
+            self.plot_z_plane()  # Update pole-zero diagram
+            self.plot_frequency_response()  # Update frequency response
+            self.plot_phase_response()  # Update phase response
+
+        else:
+            print("Enable the all-pass filter first.")
+        
     def plot_z_plane(self):
+        # Clear previous plot
         self.z_plane_ax.clear()
         self.z_plane_ax.add_artist(Circle((0, 0), self.unit_circle_radius, color="black", fill=False))
+
+        # Plot main filter zeros/poles, including the all-pass filter
         self.z_plane_ax.scatter([z.real for z in self.zeros], [z.imag for z in self.zeros], color="blue", label="Zeros")
-        self.z_plane_ax.scatter([p.real for p in self.poles], [p.imag for p in self.poles], color="red", label="Poles",marker='x')
-        self.z_plane_ax.set_xlim([-1.5, 1.5])
+        self.z_plane_ax.scatter([p.real for p in self.poles], [p.imag for p in self.poles], color="red", label="Poles", marker='x')
+
+        self.z_plane_ax.set_xlim([-3, 3])
         self.z_plane_ax.set_ylim([-1.5, 1.5])
         self.z_plane_ax.axhline(0, color='gray', linestyle='--', linewidth=0.5)
         self.z_plane_ax.axvline(0, color='gray', linestyle='--', linewidth=0.5)
@@ -424,7 +572,9 @@ class FilterDesignApp(QMainWindow):
 
     def plot_frequency_response(self):
         self.freq_response_ax.clear()
+
         if self.zeros or self.poles:
+            # Calculate frequency response based on updated zeros and poles
             b, a = zpk2tf(self.zeros, self.poles, 1)
             w, h = freqz(b, a, worN=8000)
             self.freq_response_ax.plot(w / np.pi, 20 * np.log10(abs(h)), color="blue", label="Magnitude Response")
@@ -433,8 +583,9 @@ class FilterDesignApp(QMainWindow):
             self.freq_response_ax.set_ylabel("Magnitude (dB)")
             self.freq_response_ax.grid(True)
         self.freq_response_canvas.draw()
+
     def plot_phase_response(self):
-        # Compute and plot phase response
+        # Recalculate phase response based on updated zeros and poles
         w, h = freqz_zpk(self.zeros, self.poles, 1)
         self.phase_response_ax.clear()
         self.phase_response_ax.plot(w / np.pi, np.angle(h), label="Phase Response")
@@ -443,6 +594,7 @@ class FilterDesignApp(QMainWindow):
         self.phase_response_ax.set_ylabel("Phase (radians)")
         self.phase_response_ax.legend()
         self.phase_response_canvas.draw()
+
 
     def load_predefined_filter(self, index):
         predefined_filters = {
