@@ -11,13 +11,14 @@ from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar
 )
+from PyQt5.QtWidgets import QTabWidget, QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene
 from matplotlib.patches import Circle
 from scipy.signal import freqz, zpk2tf, butter, cheby1, cheby2, ellip, bessel,freqz_zpk
 from scipy.signal import zpk2tf
 import numpy as np
 from scipy.signal import zpk2sos
 import csv
-
+from PyQt5.QtWidgets import QDialog
 import sys
 import numpy as np  
 import matplotlib.pyplot as plt
@@ -45,6 +46,10 @@ class FilterDesignApp(QMainWindow):
         self.main_widget.setLayout(self.main_layout)
         self.setCentralWidget(self.main_widget)
 
+        self.tab_widget = QTabWidget()
+
+        # Add it to your main layout
+        self.main_layout.addWidget(self.tab_widget)
 
         # Initialize data and UI components
         self.zeros = []
@@ -144,9 +149,13 @@ class FilterDesignApp(QMainWindow):
         
         self.all_pass_combobox = QComboBox()
         self.all_pass_combobox.addItems(self.all_pass_filters.keys())
-        self.all_pass_combobox.currentIndexChanged.connect(self.apply_selected_all_pass_filter)
+        # self.all_pass_combobox.currentIndexChanged.connect(self.add_to_main)
         self.controls_layout.addWidget(QLabel("All-Pass Filters"))
         self.controls_layout.addWidget(self.all_pass_combobox)
+
+        self.preview_button = QPushButton("Preview")
+        self.preview_button.clicked.connect(self.preview_all_pass_filter)
+        self.controls_layout.addWidget(self.preview_button)
 
         self.a_slider = QSlider(Qt.Horizontal)
         self.a_slider.setMinimum(0)
@@ -162,6 +171,8 @@ class FilterDesignApp(QMainWindow):
         self.add_all_pass_button = QPushButton("Add All-Pass Filter")
         self.add_all_pass_button.clicked.connect(self.add_all_pass_filter)
         self.controls_layout.addWidget(self.add_all_pass_button)
+        
+        
 
         
 
@@ -169,6 +180,13 @@ class FilterDesignApp(QMainWindow):
         self.plot_z_plane()
         self.plot_frequency_response()
         self.plot_phase_response()
+    
+
+
+    def preview_all_pass_filter(self):
+        # Create and show the new window when preview is clicked
+        new_window = PreviewWindow(self)
+        new_window.exec_()
 
         
 
@@ -196,18 +214,18 @@ class FilterDesignApp(QMainWindow):
     #         self.plot_frequency_response()
     #         self.plot_phase_response()
             
-    def apply_selected_all_pass_filter(self, index):
-        # Get the selected filter function
-        filter_name = self.all_pass_combobox.currentText()
-        if filter_name in self.all_pass_filters:
-            zeros, poles = self.all_pass_filters[filter_name]()
-            # Add to existing poles and zeros
-            self.poles.extend(poles)
-            self.zeros.extend(zeros)
-            # Update all plots
-            self.plot_z_plane()
-            self.plot_frequency_response()
-            self.plot_phase_response()
+    # def apply_selected_all_pass_filter(self, index):
+    #     # Get the selected filter function
+    #     filter_name = self.all_pass_combobox.currentText()
+    #     if filter_name in self.all_pass_filters:
+    #         zeros, poles = self.all_pass_filters[filter_name]()
+    #         # Add to existing poles and zeros
+    #         self.poles.extend(poles)
+    #         self.zeros.extend(zeros)
+    #         # Update all plots
+    #         self.plot_z_plane()
+    #         self.plot_frequency_response()
+    #         self.plot_phase_response()
 
     def get_butterworth_filter(self):
         b, a = butter(1, 0.5, analog=False)
@@ -664,6 +682,135 @@ class FilterDesignApp(QMainWindow):
         self.filtered_plot.set_data(np.arange(start, self.index), self.filtered_signal[start:self.index])
         self.filtered_ax.set_xlim(start, self.index)
         self.filtered_canvas.draw()
+
+class PreviewWindow(QDialog):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window  # Store the reference to the main window
+        self.setWindowTitle("Preview Window")   
+        self.setGeometry(150, 150, 800, 600)
+
+        # Layout for the new window
+        layout = QVBoxLayout()
+
+        # Create a horizontal layout for the plots
+        plot_layout = QHBoxLayout()
+
+        # Create the canvas and axes for the pole-zero and phase plots
+        self.z_plane_fig, self.z_plane_ax = plt.subplots()
+        self.z_plane_canvas = FigureCanvas(self.z_plane_fig)
+        plot_layout.addWidget(self.z_plane_canvas)
+
+        self.phase_fig, self.phase_ax = plt.subplots()
+        self.phase_canvas = FigureCanvas(self.phase_fig)
+        plot_layout.addWidget(self.phase_canvas)
+
+        layout.addLayout(plot_layout)
+
+        # Example content for the new window
+        label = QLabel("Pole-Zero and Phase Response Plots")
+        layout.addWidget(label)
+
+        # Add a button to close the window
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.close)  # Close the window when clicked
+        layout.addWidget(close_button)
+
+        # Add a button to close the window
+        add_button = QPushButton("Add")
+        add_button.clicked.connect(self.add_to_main)  # Close the window when clicked
+        layout.addWidget(add_button)
+
+
+        self.setLayout(layout)
+
+        # Plot the initial pole-zero and phase response using methods from the main window
+        self.plot_pole_zero()
+        self.plot_phase_response()
+    
+    def add_to_main(self):
+        # Get the selected filter function
+        filter_name = self.main_window.all_pass_combobox.currentText()
+        if filter_name in self.main_window.all_pass_filters:
+            zeros, poles = self.main_window.all_pass_filters[filter_name]()
+            # Add to existing poles and zeros
+            self.main_window.poles.extend(poles)
+            self.main_window.zeros.extend(zeros)
+            # Update all plots
+            self.main_window.plot_z_plane()
+            self.main_window.plot_frequency_response()
+            self.main_window.plot_phase_response()
+
+
+    def plot_pole_zero(self):
+            # Get the selected filter from the combobox in the main window
+        selected_filter = self.main_window.all_pass_combobox.currentText()
+
+        # Get zeros and poles for the selected filter
+        if selected_filter == 'Butterworth':
+            zeros, poles = self.main_window.get_butterworth_filter()
+        elif selected_filter == 'Chebyshev Type I':
+            zeros, poles = self.main_window.get_chebyshev_filter()
+        elif selected_filter == 'Elliptic':
+            zeros, poles = self.main_window.get_elliptic_filter()
+        elif selected_filter == 'Bessel':
+            zeros, poles = self.main_window.get_bessel_filter()
+        else:
+            return  # If no filter is selected, do nothing
+
+        # Plot poles and zeros
+        self.z_plane_ax.cla()  # Clear previous plots
+        self.z_plane_ax.plot([z.real for z in zeros], [z.imag for z in zeros], 'bo', label="Zeros")
+        self.z_plane_ax.plot([p.real for p in poles], [p.imag for p in poles], 'rx', label="Poles")
+
+        # Draw unit circle
+        unit_circle = plt.Circle((0, 0), 1, color='g', fill=False, linestyle='--')
+        self.z_plane_ax.add_artist(unit_circle)
+
+        # Set the limits to ensure the unit circle is fully visible
+        self.z_plane_ax.set_xlim(-1.5, 1.5)
+        self.z_plane_ax.set_ylim(-1.5, 1.5)
+
+        # Add labels and title
+        self.z_plane_ax.set_title('Pole-Zero Plot')
+        self.z_plane_ax.set_xlabel('Real')
+        self.z_plane_ax.set_ylabel('Imaginary')
+        self.z_plane_ax.axhline(0, color='black', linewidth=1)
+        self.z_plane_ax.axvline(0, color='black', linewidth=1)
+
+        # Display legend
+        self.z_plane_ax.legend()
+
+        # Redraw the canvas
+        self.z_plane_canvas.draw()
+
+    def plot_phase_response(self):
+        # Get the selected filter from the combobox in the main window
+        selected_filter = self.main_window.all_pass_combobox.currentText()
+
+        # Get transfer function for the selected filter
+        if selected_filter == 'Butterworth':
+            b, a = self.main_window.get_butterworth_filter()
+        elif selected_filter == 'Chebyshev Type I':
+            b, a = self.main_window.get_chebyshev_filter()
+        elif selected_filter == 'Elliptic':
+            b, a = self.main_window.get_elliptic_filter()
+        elif selected_filter == 'Bessel':
+            b, a = self.main_window.get_bessel_filter()
+        else:
+            return  # If no filter is selected, do nothing
+
+        # Plot the phase response
+        w, h = freqz(b, a)
+        self.phase_ax.cla()
+        self.phase_ax.plot(w, np.angle(h), label="Phase Response")
+        
+        self.phase_ax.set_title('Phase Response')
+        self.phase_ax.set_xlabel('Frequency (rad/sample)')
+        self.phase_ax.set_ylabel('Phase (radians)')
+        self.phase_ax.legend()
+
+        self.phase_canvas.draw()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
