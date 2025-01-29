@@ -1,31 +1,44 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import time
-import csv
-import scipy.signal as signal
-from scipy.signal import (
-    freqz, zpk2tf, butter, cheby1, cheby2, ellip, bessel, freqz_zpk,
-    zpk2sos, tf2zpk, lfilter
-)
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
-    QLabel, QSlider, QFileDialog, QCheckBox, QComboBox, QTableWidget, QMessageBox, QDialog, QTabWidget, QGraphicsView, QGraphicsScene
+    QLabel, QSlider, QFileDialog, QCheckBox, QComboBox, QTableWidget, QMessageBox
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QCursor
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg as FigureCanvas,
     NavigationToolbar2QT as NavigationToolbar
 )
+from PyQt5.QtWidgets import QTabWidget, QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene
 from matplotlib.patches import Circle
-from scipy.signal import iirfilter
+from scipy.signal import freqz, zpk2tf, butter, cheby1, cheby2, ellip, bessel,freqz_zpk
+from scipy.signal import zpk2tf
+import numpy as np
+from scipy.signal import zpk2sos
+import csv
+from PyQt5.QtWidgets import QDialog
+import sys
+import numpy as np  
+import matplotlib.pyplot as plt
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QPushButton,
+    QLabel, QSlider
+)
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QCursor
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from scipy.signal import zpk2tf, lfilter
+
+import numpy as np
+from scipy.signal import butter, cheby1, ellip, bessel, zpk2tf, tf2zpk
 
 class FilterDesignApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Real-Time Digital Filter Design")
-        self.setGeometry(100, 100, 1600, 1000)
+        self.setGeometry(100, 100, 1200, 800)
 
         # Main widget and layout
         self.main_widget = QWidget()
@@ -41,7 +54,6 @@ class FilterDesignApp(QMainWindow):
         # Initialize data and UI components
         self.zeros = []
         self.poles = []
-        self.gain=1
         self.history = []  # Undo/Redo history
         self.redo_stack = []
         self.unit_circle_radius = 1
@@ -53,27 +65,15 @@ class FilterDesignApp(QMainWindow):
         self.speed = 10  # Default points per second
         self.timer = QTimer()
         self.timer.timeout.connect(self.process_next_point)
-        self.filtering_active = False  # To manage the toggle button state
-        self.x_scale_factor = 1.0  # Scaling factor for x-axis
-        self.mouse_signal = []
-        self.filtered_mouse_signal = []
-        self.mouse_time = []  # Store timestamps
-        self.start_time = time.time()
-        self.prev_mouse_y = None
-        self.filter_b, self.filter_a = [1.0, -0.5], [1.0, -0.5]  # Updated default filter coefficients
-        self.filter_state = None
-
-        self.window_size = 100  # Number of points to display dynamically
-        self.enable_mouse=False
 
         self.selected_point = None
         self.selected_type = None
 
         self.all_pass_filters = {
-            "Default first-order all-pass filter with a real pole at 0.5": self.get_butterworth_filter,
-            "Default first-order all-pass filter with a real pole at 0.7": self.get_chebyshev_filter,
-            "Default second-order all-pass filter with complex conjugate poles": self.get_elliptic_filter,
-            "Default first-order all-pass filter with a real pole at 0.6": self.get_bessel_filter
+            "Butterworth": self.get_butterworth_filter,
+            "Chebyshev Type I": self.get_chebyshev_filter,
+            "Elliptic": self.get_elliptic_filter,
+            "Bessel": self.get_bessel_filter
         }
         
         self.all_pass_filters_libraries = []
@@ -106,35 +106,23 @@ class FilterDesignApp(QMainWindow):
 
         # Z-Plane Plot
         self.z_plane_canvas, self.z_plane_ax = self.create_plot_canvas()
-        self.z_plane_canvas.figure.subplots_adjust(bottom=0.1,top=0.95,left=0.1,right=0.95)
         self.graph_layout.addWidget(self.z_plane_canvas)
 
         # Frequency Response Plot
         self.freq_response_canvas, self.freq_response_ax = self.create_plot_canvas()
-        self.freq_response_canvas.figure.subplots_adjust(bottom=0.1,top=0.95,left=0.1,right=0.95)
         self.graph_layout.addWidget(self.freq_response_canvas)
 
         # Phase Response Plot
         self.phase_response_canvas, self.phase_response_ax = self.create_plot_canvas()
-        self.phase_response_canvas.figure.subplots_adjust(bottom=0.18,top=0.90,left=0.1,right=0.95)
         self.graph_layout.addWidget(self.phase_response_canvas)
 
-
-
-        self.mouse_input_fig, self.mouse_input_ax = plt.subplots()
-        self.mouse_input_canvas = FigureCanvas(self.mouse_input_fig)
-        self.mouse_input_ax.set_title("Mouse Input Signal")
-        # Hide the axes
-        self.mouse_input_ax.set_axis_off()
-        self.mouse_input_canvas.mpl_connect('motion_notify_event', self.on_mouse_motion)
-        self.graph_layout2.addWidget(self.mouse_input_canvas)
 
 
         # Original Signal Plot
         self.original_fig, self.original_ax = plt.subplots()
         self.original_canvas = FigureCanvas(self.original_fig)
         self.original_ax.set_title("Original Signal")
-        self.original_ax.set_xlim(0, 5)
+        self.original_ax.set_xlim(0, 1000)
         self.original_ax.set_ylim(-3, 3)
         self.original_plot, = self.original_ax.plot([], [], color="blue")
         self.graph_layout2.addWidget(self.original_canvas)
@@ -143,7 +131,7 @@ class FilterDesignApp(QMainWindow):
         self.filtered_fig, self.filtered_ax = plt.subplots()
         self.filtered_canvas = FigureCanvas(self.filtered_fig)
         self.filtered_ax.set_title("Filtered Signal")
-        self.filtered_ax.set_xlim(0, 5)
+        self.filtered_ax.set_xlim(0, 1000)
         self.filtered_ax.set_ylim(-3, 3)
         self.filtered_plot, = self.filtered_ax.plot([], [], color="green")
         self.graph_layout2.addWidget(self.filtered_canvas)
@@ -207,10 +195,10 @@ class FilterDesignApp(QMainWindow):
         
 
     # def add_all_pass_filter(self):
-    #     #     selected_filter = self.all_pass_combobox.currentText()
-    #     #     if selected_filter in self.all_pass_filters:
-    #     #         self.active_all_pass_filters.append(self.all_pass_filters[selected_filter])
-    #     #         self.plot_z_plane()
+    #     selected_filter = self.all_pass_combobox.currentText()
+    #     if selected_filter in self.all_pass_filters:
+    #         self.active_all_pass_filters.append(self.all_pass_filters[selected_filter])
+    #         self.plot_z_plane()
     #         self.plot_frequency_response()
     #         self.plot_phase_response()
 
@@ -240,36 +228,20 @@ class FilterDesignApp(QMainWindow):
     #         self.plot_phase_response()
 
     def get_butterworth_filter(self):
-        a = 0.5  # Real pole
-        b = [a, 1]  # Numerator coefficients
-        a = [1, a]  # Denominator coefficients
-        return self.convert_to_allpass(b, a)
+        b, a = butter(1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
 
     def get_chebyshev_filter(self):
-        a = 0.7  # Real pole
-        b = [a, 1]  # Numerator coefficients
-        a = [1, a]  # Denominator coefficients
-        return self.convert_to_allpass(b, a)
+        b, a = cheby1(1, 1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
 
     def get_elliptic_filter(self):
-        r = 0.9  # Magnitude of poles
-        theta = np.pi / 4  # Angle of poles
-        a = r * np.exp(1j * theta)  # Complex pole
-        a_conj = np.conj(a)  # Complex conjugate pole
-        b = [1, -(a + a_conj), a * a_conj]  # Numerator coefficients
-        a = [a * a_conj, -(a + a_conj), 1]  # Denominator coefficients
-        return self.convert_to_allpass(b, a)
+        b, a = ellip(1, 1, 10, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
 
     def get_bessel_filter(self):
-        a = 0.6  # Real pole
-        b = [a, 1]  # Numerator coefficients
-        a = [1, a]  # Denominator coefficients
-        return self.convert_to_allpass(b, a)
-
-    def convert_to_allpass(self, b, a):
-        # Extract zeros and poles from the transfer function
-        z, p, k = tf2zpk(b, a)
-        return z, p
+        b, a = bessel(1, 0.5, analog=False)
+        return self.extract_zeros_poles(b, a)
 
     def extract_zeros_poles(self, b, a):
         z, p, k = tf2zpk(b, a)  # Correct function to extract zeros, poles, and gain
@@ -320,20 +292,14 @@ class FilterDesignApp(QMainWindow):
         self.export_realization_button.clicked.connect(self.export_realization)
 
          # Start/Stop Buttons
-        self.load_signal_button = QPushButton("Load Signal")
-        self.toggle_button = QPushButton("Start")
-        self.restart_button = QPushButton("Reset")
-        self.checkbox = QCheckBox("Enable Mouse Movement")
-        self.checkbox.stateChanged.connect(self.checkbox_toggled)  # Connect checkbox signal
-        self.control_layout = QHBoxLayout()
-        self.load_signal_button.clicked.connect(self.load_signal)
-        self.toggle_button.clicked.connect(self.toggle_filtering)
-        self.restart_button.clicked.connect(self.restart_filtering)
-        self.control_layout.addWidget(self.load_signal_button)
-        self.control_layout.addWidget(self.toggle_button)
-        self.control_layout.addWidget(self.restart_button)
-        self.control_layout.addWidget(self.checkbox)
-        self.controls_layout.addLayout(self.control_layout)
+        self.start_button = QPushButton("Start")
+        self.stop_button = QPushButton("Stop")
+
+        self.start_button.clicked.connect(self.start_filtering)
+        self.stop_button.clicked.connect(self.stop_filtering)
+
+        self.controls_layout.addWidget(self.start_button)
+        self.controls_layout.addWidget(self.stop_button)
 
 
     def add_sliders(self):
@@ -350,102 +316,21 @@ class FilterDesignApp(QMainWindow):
 
     def add_checkboxes_and_comboboxes(self):
         self.add_conjugates_checkbox = QCheckBox("Add Conjugates")
-        self.add_conjugates_checkbox.stateChanged.connect(self.ensure_conjugates)
         self.controls_layout.addWidget(self.add_conjugates_checkbox)
 
-        # Add filter parameters controls
-        self.params_layout = QHBoxLayout()
-
-        # Add order selection
-        self.order_label = QLabel("Filter Order:")
-        self.order_combo = QComboBox()
-        self.order_combo.addItems(['2', '4', '6', '8'])
-
-        # Add cutoff frequency control
-        self.cutoff_label = QLabel("Cutoff Freq (Hz):")
-        self.cutoff_slider = QSlider(Qt.Horizontal)
-        self.cutoff_slider.setMinimum(1)
-        self.cutoff_slider.setMaximum(100)
-        self.cutoff_slider.setValue(20)
-
-        # For Chebyshev filters
-        self.ripple_label = QLabel("Ripple (dB):")
-        self.ripple_slider = QSlider(Qt.Horizontal)
-        self.ripple_slider.setMinimum(1)
-        self.ripple_slider.setMaximum(20)
-        self.ripple_slider.setValue(1)
-
-        # Add to layout
-        for widget in [self.order_label, self.order_combo,
-                       self.cutoff_label, self.cutoff_slider,
-                       self.ripple_label, self.ripple_slider]:
-            self.params_layout.addWidget(widget)
-
-        self.controls_layout.addLayout(self.params_layout)
-
-        # Expanded filter library
         self.filter_library_combobox = QComboBox()
         self.filter_library_combobox.addItems([
-            "Butterworth LPF", "Butterworth HPF", "Butterworth BPF",
-            "Chebyshev I LPF", "Chebyshev I HPF", "Chebyshev I BPF",
-            "Chebyshev II LPF", "Chebyshev II HPF", "Chebyshev II BPF",
-            "Bessel LPF", "Bessel HPF", "Bessel BPF",
-            "Elliptic LPF", "Elliptic HPF", "Elliptic BPF"
+            "Butterworth LPF", "Butterworth HPF", "Chebyshev I LPF", "Chebyshev I HPF",
+            "Elliptic LPF", "Elliptic HPF", "Bessel LPF", "Bessel HPF","Chebyshev II LPF","Chebyshev II HPF"
         ])
         self.filter_library_combobox.currentIndexChanged.connect(self.load_predefined_filter)
 
         self.controls_layout.addWidget(QLabel("Filter Library"))
         self.controls_layout.addWidget(self.filter_library_combobox)
 
-    def ensure_conjugates(self):
-        """
-        Check for and add missing conjugates to poles and zeros
-        when the 'Add Conjugates' checkbox is selected.
-        """
-        if not self.add_conjugates_checkbox.isChecked():
-            return
-
-        # Handle zeros
-        zeros_to_add = []
-        for zero in self.zeros:
-            # Skip if the zero is real (no conjugate needed)
-            if abs(zero.imag) < 1e-10:
-                continue
-
-            # Check if conjugate already exists
-            conjugate = zero.conjugate()
-            conjugate_exists = any(abs(z - conjugate) < 1e-10 for z in self.zeros)
-
-            if not conjugate_exists:
-                zeros_to_add.append(conjugate)
-
-        # Handle poles
-        poles_to_add = []
-        for pole in self.poles:
-            # Skip if the pole is real (no conjugate needed)
-            if abs(pole.imag) < 1e-10:
-                continue
-
-            # Check if conjugate already exists
-            conjugate = pole.conjugate()
-            conjugate_exists = any(abs(p - conjugate) < 1e-10 for p in self.poles)
-
-            if not conjugate_exists:
-                poles_to_add.append(conjugate)
-
-        # Add all missing conjugates
-        if zeros_to_add or poles_to_add:
-            self.zeros.extend(zeros_to_add)
-            self.poles.extend(poles_to_add)
-            self.save_to_history()
-            self.plot_z_plane()
-            self.plot_frequency_response()
-            self.plot_phase_response()
 
     def add_element(self, element_type):
         """Adds a new zero or pole with optional conjugate pair."""
-        # Save current state before adding new element
-        self.save_to_history()
         new_element = 0.5 + 0j if element_type == "zero" else 0.7 + 0j
         target_list = self.zeros if element_type == "zero" else self.poles
 
@@ -456,8 +341,6 @@ class FilterDesignApp(QMainWindow):
         if self.add_conjugates_checkbox.isChecked() and new_element.imag != 0:
             target_list.append(new_element.conjugate())
 
-        self.ensure_conjugates()
-
         # Update the table and visualizations
         # self.update_table()
         self.save_to_history()
@@ -465,20 +348,21 @@ class FilterDesignApp(QMainWindow):
         self.plot_frequency_response()
         self.plot_phase_response()
 
+
+
     def export_realization(self):
         try:
             # Get coefficients from realization methods
-            # cascade_coefficients = self.cascade_realization()
+            cascade_coefficients = self.cascade_realization()
             direct_form_coefficients = self.direct_form_ii_realization()
 
             # Ensure both methods return dictionaries
-            if not isinstance(direct_form_coefficients, dict):
+            if not isinstance(cascade_coefficients, dict) or not isinstance(direct_form_coefficients, dict):
                 raise ValueError("Realization methods must return dictionaries.")
 
             # Combine coefficients
-            # coefficients = cascade_coefficients.copy()
-            # coefficients.update(direct_form_coefficients)
-            coefficients = direct_form_coefficients
+            coefficients = cascade_coefficients.copy()
+            coefficients.update(direct_form_coefficients)
 
             # Export coefficients to a CSV file
             filename = "filter_coefficients.csv"
@@ -493,10 +377,6 @@ class FilterDesignApp(QMainWindow):
 
             print(f"Filter coefficients exported to {filename}")
             QMessageBox.information(self, "Export", "Filter realization exported successfully!")
-
-        except Exception as e:
-            print(f"Error during export: {e}")
-            QMessageBox.critical(self, "Export Error", f"An error occurred: {e}")
 
         except Exception as e:
             print(f"Error during export: {e}")
@@ -577,7 +457,6 @@ class FilterDesignApp(QMainWindow):
     
     def on_release(self, event):
         if self.selected_point is not None:
-            self.ensure_conjugates()  # new added line
             self.save_to_history()
         self.selected_point = None
         self.selected_type = None
@@ -588,14 +467,12 @@ class FilterDesignApp(QMainWindow):
         self.save_to_history()
         self.plot_z_plane()
         self.plot_frequency_response()
-        self.plot_phase_response()
 
     def clear_poles(self):
         self.poles.clear()
         self.save_to_history()
         self.plot_z_plane()
         self.plot_frequency_response()
-        self.plot_phase_response()
 
     def clear_all(self):
         self.zeros.clear()
@@ -609,28 +486,13 @@ class FilterDesignApp(QMainWindow):
         self.save_to_history()
         self.plot_z_plane()
         self.plot_frequency_response()
-
     def direct_form_ii_realization(self):
-        zeros_with_conjugates = []
-        poles_with_conjugates = []
 
-        for zero in self.zeros:
-            zeros_with_conjugates.append(zero)
-            if not np.isreal(zero) and np.conj(zero) not in zeros_with_conjugates:
-                zeros_with_conjugates.append(np.conj(zero))
+        b, a = zpk2tf(self.zeros, self.poles, 1)
 
-        for pole in self.poles:
-            poles_with_conjugates.append(pole)
-            if not np.isreal(pole) and np.conj(pole) not in poles_with_conjugates:
-                poles_with_conjugates.append(np.conj(pole))
-
-        # Get filter coefficients
-        b, a = zpk2tf(zeros_with_conjugates, poles_with_conjugates, 1)
-
-        # Export coefficients
+        # Exporting filter coefficients
         coefficients = {"Numerator": b.tolist(), "Denominator": a.tolist()}
         return coefficients
-
     def cascade_realization(self):
         # Convert to second-order sections
         sos = zpk2sos(self.zeros,self. poles, 1)
@@ -679,92 +541,10 @@ class FilterDesignApp(QMainWindow):
     def generate_c_code(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Generate C Code", "", "C Files (*.c)")
         if file_name:
-            try:
-                # Get filter coefficients
-                b, a = zpk2tf(self.zeros, self.poles, 1)
-
-                # Generate C code
-                c_code = f"""
-    /**
-     * Auto-generated digital filter implementation
-     * Filter Type: Direct Form II
-     * Number of zeros: {len(self.zeros)}
-     * Number of poles: {len(self.poles)}
-     */
-
-    #include <stdio.h>
-    #include <string.h>
-
-    #define FILTER_ORDER {max(len(b) - 1, len(a) - 1)}
-    #define BUFFER_SIZE (FILTER_ORDER + 1)
-
-    // Filter coefficients
-    static const double b_coeffs[] = {{{', '.join(map(str, b))}}};
-    static const double a_coeffs[] = {{{', '.join(map(str, a))}}};
-
-    // State buffer for Direct Form II implementation
-    static double state[BUFFER_SIZE] = {{0.0}};
-    static int buffer_index = 0;
-
-    // Function to reset filter state
-    void reset_filter(void) {{
-        memset(state, 0, sizeof(state));
-        buffer_index = 0;
-    }}
-
-    // Process single sample through filter
-    double process_sample(double input) {{
-        double output = 0.0;
-        double new_state;
-
-        // Calculate new state
-        new_state = input;
-        for (int i = 1; i <= FILTER_ORDER; i++) {{
-            new_state -= a_coeffs[i] * state[(buffer_index - i + BUFFER_SIZE) % BUFFER_SIZE];
-        }}
-
-        // Update state buffer
-        state[buffer_index] = new_state;
-
-        // Calculate output
-        for (int i = 0; i <= FILTER_ORDER; i++) {{
-            output += b_coeffs[i] * state[(buffer_index - i + BUFFER_SIZE) % BUFFER_SIZE];
-        }}
-
-        // Update buffer index
-        buffer_index = (buffer_index + 1) % BUFFER_SIZE;
-
-        return output;
-    }}
-
-    // Example usage
-    #ifdef FILTER_TEST
-    int main() {{
-        // Test input samples
-        double test_samples[] = {{1.0, 0.0, 0.0, 0.0, 0.0}};
-        int num_samples = sizeof(test_samples) / sizeof(test_samples[0]);
-
-        printf("Testing filter implementation\\n");
-        printf("Input -> Output\\n");
-
-        for (int i = 0; i < num_samples; i++) {{
-            double output = process_sample(test_samples[i]);
-            printf("%f -> %f\\n", test_samples[i], output);
-        }}
-
-        return 0;
-    }}
-    #endif
-    """
-                # Write to file
-                with open(file_name, 'w') as f:
-                    f.write(c_code)
-
-                # Show success message
-                QMessageBox.information(self, "Success", "C code generated successfully!")
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to generate C code: {str(e)}")
+            with open(file_name, "w") as file:
+                file.write("// C Code for Digital Filter\n")
+                file.write("// Zeros: {}\n".format(self.zeros))
+                file.write("// Poles: {}\n".format(self.poles))
 
     def add_all_pass_filter(self):
     # Ensure that the checkbox is checked before proceeding
@@ -805,7 +585,7 @@ class FilterDesignApp(QMainWindow):
         self.z_plane_ax.axhline(0, color='gray', linestyle='--', linewidth=0.5)
         self.z_plane_ax.axvline(0, color='gray', linestyle='--', linewidth=0.5)
         self.z_plane_ax.set_aspect('equal', adjustable='box')
-        self.z_plane_ax.legend(loc='upper right')
+        self.z_plane_ax.legend()
         self.z_plane_canvas.draw()
 
     def plot_frequency_response(self):
@@ -820,290 +600,88 @@ class FilterDesignApp(QMainWindow):
             self.freq_response_ax.set_xlabel("Normalized Frequency (xπ rad/sample)")
             self.freq_response_ax.set_ylabel("Magnitude (dB)")
             self.freq_response_ax.grid(True)
-            self.freq_response_canvas.figure.subplots_adjust(bottom=0.18,top=0.90,left=0.1,right=0.95)
         self.freq_response_canvas.draw()
 
     def plot_phase_response(self):
         # Recalculate phase response based on updated zeros and poles
+        w, h = freqz_zpk(self.zeros, self.poles, 1)
         self.phase_response_ax.clear()
-        if self.zeros or self.poles:
-            w, h = freqz_zpk(self.zeros, self.poles, 1)
-            self.phase_response_ax.clear()
-            self.phase_response_ax.plot(w / np.pi, np.angle(h), label="Phase Response")
-            self.phase_response_ax.set_title("Phase Response")
-            self.phase_response_ax.set_xlabel("Normalized Frequency")
-            self.phase_response_ax.set_ylabel("Phase (radians)")
-            self.phase_response_canvas.figure.subplots_adjust(bottom=0.18,top=0.90,left=0.1,right=0.95)
+        self.phase_response_ax.plot(w / np.pi, np.angle(h), label="Phase Response")
+        self.phase_response_ax.set_title("Phase Response")
+        self.phase_response_ax.set_xlabel("Normalized Frequency")
+        self.phase_response_ax.set_ylabel("Phase (radians)")
+        self.phase_response_ax.legend()
         self.phase_response_canvas.draw()
 
+
     def load_predefined_filter(self, index):
-        # Get parameters from UI
-        order = int(self.order_combo.currentText())
-        cutoff = self.cutoff_slider.value() / 100.0  # Normalize to [0,1]
-        ripple = self.ripple_slider.value()
-
-        # For bandpass filters
-        if "BPF" in self.filter_library_combobox.currentText():
-            low_freq = cutoff * 0.8  # Lower cutoff
-            high_freq = cutoff * 1.2  # Upper cutoff
-            band = [low_freq, high_freq]
-        else:
-            band = cutoff
-
-        try:
-            # Initialize filter based on selection
-            filter_type = self.filter_library_combobox.currentText()
-
-            if "Butterworth" in filter_type:
-                if "LPF" in filter_type:
-                    z, p, k = butter(order, band, btype='low', output='zpk')
-                elif "HPF" in filter_type:
-                    z, p, k = butter(order, band, btype='high', output='zpk')
-                else:  # BPF
-                    z, p, k = butter(order, band, btype='band', output='zpk')
-
-            elif "Chebyshev I" in filter_type:
-                if "LPF" in filter_type:
-                    z, p, k = cheby1(order, ripple, band, btype='low', output='zpk')
-                elif "HPF" in filter_type:
-                    z, p, k = cheby1(order, ripple, band, btype='high', output='zpk')
-                else:  # BPF
-                    z, p, k = cheby1(order, ripple, band, btype='band', output='zpk')
-
-            elif "Chebyshev II" in filter_type:
-                if "LPF" in filter_type:
-                    z, p, k = cheby2(order, ripple, band, btype='low', output='zpk')
-                elif "HPF" in filter_type:
-                    z, p, k = cheby2(order, ripple, band, btype='high', output='zpk')
-                else:  # BPF
-                    z, p, k = cheby2(order, ripple, band, btype='band', output='zpk')
-
-            elif "Bessel" in filter_type:
-                if "LPF" in filter_type:
-                    z, p, k = bessel(order, band, btype='low', output='zpk')
-                elif "HPF" in filter_type:
-                    z, p, k = bessel(order, band, btype='high', output='zpk')
-                else:  # BPF
-                    z, p, k = bessel(order, band, btype='band', output='zpk')
-
-            elif "Elliptic" in filter_type:
-                if "LPF" in filter_type:
-                    z, p, k = ellip(order, ripple, 40, band, btype='low', output='zpk')
-                elif "HPF" in filter_type:
-                    z, p, k = ellip(order, ripple, 40, band, btype='high', output='zpk')
-                else:  # BPF
-                    z, p, k = ellip(order, ripple, 40, band, btype='band', output='zpk')
-
-            # Update filter
+        predefined_filters = {
+            0: butter(4, 0.2, btype='low', output='zpk'),
+            1: butter(4, 0.2, btype='high', output='zpk'),
+            2: cheby1(4, 1, 0.2, btype='low', output='zpk'),
+            3: cheby1(4, 1, 0.2, btype='high', output='zpk'),
+            4: ellip(4, 1, 40, 0.2, btype='low', output='zpk'),
+            5: ellip(4, 1, 40, 0.2, btype='high', output='zpk'),
+            6: bessel(4, 0.2, btype='low', output='zpk'),
+            7: bessel(4, 0.2, btype='high', output='zpk'),
+            8: cheby2(4, 20, 0.3, btype='low', output='zpk'),
+            9: cheby2(4, 20, 0.3, btype='high', output='zpk')
+        }
+        if index in predefined_filters:
+            z, p, _ = predefined_filters[index]
             self.zeros = list(z)
             self.poles = list(p)
-            self.gain = k
-
-            # Update plots
             self.plot_z_plane()
             self.plot_frequency_response()
             self.plot_phase_response()
-
-        except Exception as e:
-            QMessageBox.warning(self, "Filter Design Error", f"Error creating filter: {str(e)}")
 
     def update_speed(self, value):
         self.speed = value
         if self.timer.isActive():
             self.timer.setInterval(1000 // self.speed)
 
-    def checkbox_toggled(self, state):
-        if state == 2:  # Checked
-            self.enable_mouse=True
-            self.restart_filtering()
-        else:  # Unchecked
-            self.enable_mouse=False
-            self.restart_filtering()
-
     def start_filtering(self):
-        if self.signal.size > 0 and self.x_values.size > 0:
-            self.compute_filter_coefficients()
-            self.timer.start(1000 // self.speed)
+        self.timer.start(1000 // self.speed)
 
     def stop_filtering(self):
         self.timer.stop()
 
-    def toggle_filtering(self):
-        """Toggle the filtering process between start and stop."""
-        if not self.filtering_active:
-            self.toggle_button.setText("Stop")
-            self.start_filtering()
-        else:
-            self.toggle_button.setText("Start")
-            self.stop_filtering()
-        self.filtering_active = not self.filtering_active
-
-    def restart_filtering(self):
-        """Restart the filtering process from the beginning."""
-        self.stop_filtering()
-        self.index = 0
-        self.filtered_signal.fill(0)  # Clear filtered signal
-        self.update_plots()  # Reset the plots
-        self.toggle_button.setText("Start")
-        self.filtering_active = False
-
-    def load_signal(self):
-        options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load Signal File", "", "CSV Files (*.csv);;All Files (*)", options=options)
-        if file_path:
-            data = np.loadtxt(file_path, delimiter=",")
-            if data.shape[1] >= 2:  # Ensure file has at least two columns
-                self.x_values = data[:, 0]
-                self.signal = data[:, 1]
-                self.filtered_signal = np.zeros_like(self.signal)
-                self.index = 0
-        # self.compute_filter_coefficients()
-
     def compute_filter_coefficients(self):
-        """Compute filter coefficients based on zeros, poles, and gain."""
+        # Compute filter coefficients from zeros and poles
         if self.zeros or self.poles:
-            self.filter_b, self.filter_a = signal.zpk2tf(self.zeros, self.poles, self.gain)
-            self.filter_b = np.real_if_close(self.filter_b)
-            self.filter_a = np.real_if_close(self.filter_a)
+            b, a = zpk2tf(self.zeros, self.poles, 1)
         else:
-            self.filter_b, self.filter_a = [1.0, -0.5], [1.0, -0.5]
-        self.filter_state = signal.lfilter_zi(self.filter_b, self.filter_a) * self.signal[0]
-        print(f"Filter coefficients (b): {self.filter_b}")
-        print(f"Filter coefficients (a): {self.filter_a}")
-
+            b, a = [1.0], [1.0]  # Default passthrough filter
+        print(b)
+        print(a)
+        return b, a
 
     def process_next_point(self):
-        """Process the next signal point and apply the filter."""
-        if self.index < len(self.signal):
-            point = self.signal[self.index]
-            filtered_point, self.filter_state = signal.lfilter(
-                self.filter_b, self.filter_a, [point], zi=self.filter_state
-            )
-            self.filtered_signal[self.index] = filtered_point[0]
-            self.index += 1
-            self.update_plots()
-        else:
-            self.timer.stop()
+        if self.index >= len(self.signal):
+            self.stop_filtering()
+            return
 
-    def apply_filter(self, point):
-        if not hasattr(self, 'filter_state'):
-            self.filter_state = signal.lfilter_zi(self.filter_b, self.filter_a) * point
-        filtered_point, self.filter_state = signal.lfilter(self.filter_b, self.filter_a, [point], zi=self.filter_state)
-        return filtered_point[0]
+        # Get filter coefficients
+        b, a = self.compute_filter_coefficients()
 
+        # Apply filtering point-by-point
+        self.filtered_signal[self.index] = lfilter(b, a, [self.signal[self.index]])[0]
 
-    # def update_plots(self):
-    #     """Update the original and filtered signal plots dynamically."""
-    #     if self.index > 0:
-    #         self.original_ax.clear()
-    #         self.filtered_ax.clear()
-    #         x_data = self.x_values[:self.index] * self.x_scale_factor
-    #         y_data_original = self.signal[:self.index]
-    #         y_data_filtered = self.filtered_signal[:self.index]
-    #
-    #         self.original_plot.set_data(x_data, y_data_original)
-    #         self.filtered_plot.set_data(x_data, y_data_filtered)
-    #
-    #         # Dynamically adjust x and y limits
-    #         self.original_ax.set_xlim(max(0, x_data[-1] - 5), x_data[-1] + 0.2)
-    #         self.filtered_ax.set_xlim(max(0, x_data[-1] - 5), x_data[-1] + 0.2)
-    #
-    #         y_min = min(min(y_data_original), min(y_data_filtered)) - 0.2
-    #         y_max = max(max(y_data_original), max(y_data_filtered)) + 0.2
-    #
-    #         self.original_ax.set_ylim(y_min, y_max)
-    #         self.filtered_ax.set_ylim(y_min, y_max)
-    #
-    #         self.original_canvas.draw()
-    #         self.filtered_canvas.draw()
+        # Update plots
+        self.update_plots()
+        self.index += 1
 
     def update_plots(self):
-        """Update the original and filtered signal plots dynamically."""
-        if self.index > 0:
-            self.original_ax.clear()
-            self.filtered_ax.clear()
-
-            x_data = self.x_values[:self.index] * self.x_scale_factor
-            y_data_original = self.signal[:self.index]
-            y_data_filtered = self.filtered_signal[:self.index]
-
-            # Plot original signal in blue and filtered signal in red
-            self.original_ax.plot(x_data, y_data_original, color='blue', label="Original Signal")
-            self.filtered_ax.plot(x_data, y_data_filtered, color='red', label="Filtered Signal")
-
-            # Dynamically adjust x and y limits
-            self.original_ax.set_xlim(max(0, x_data[-1] - 5), x_data[-1] + 0.2)
-            self.filtered_ax.set_xlim(max(0, x_data[-1] - 5), x_data[-1] + 0.2)
-
-            y_min_input = min(y_data_original) - 0.2
-            y_max_input = max(y_data_original) + 0.2
-            y_min_output = min( y_data_filtered) - 0.2
-            y_max_output = max( y_data_filtered) + 0.2
-
-            self.original_ax.set_ylim(y_min_input, y_max_input)
-            self.filtered_ax.set_ylim(y_min_output, y_max_output)
-
-            # Add legends to indicate which line is which
-            self.original_ax.legend(loc='upper right')
-            self.filtered_ax.legend(loc='upper right')
-
-            # Redraw the plots
-            self.original_canvas.draw()
-            self.filtered_canvas.draw()
-
-
-
-    def on_mouse_motion(self, event):
-        """Capture mouse motion to generate a real-time signal."""
-        self.compute_filter_coefficients()
-        if self.enable_mouse:
-            if event.inaxes != self.mouse_input_ax:
-                return
-            current_time = time.time() - self.start_time
-            if self.prev_mouse_y is not None:
-                delta_y = event.ydata - self.prev_mouse_y
-                self.mouse_signal.append(delta_y)
-                self.mouse_time.append(current_time)
-                if len(self.mouse_signal) > 10000:
-                    self.mouse_signal.pop(0)
-                    self.mouse_time.pop(0)
-                if self.filter_state is None and len(self.filter_a) > 1:
-                    self.filter_state = signal.lfilter_zi(self.filter_b, self.filter_a) * delta_y
-                if self.filter_state is not None:
-                    self.filtered_mouse_signal.append(self.apply_filter2(delta_y))
-                else:
-                    self.filtered_mouse_signal.append(delta_y)  # Fallback in case of invalid filter
-                self.update_mouse_plot()
-            self.prev_mouse_y = event.ydata
-
-    def apply_filter2(self, point):
-        """Apply filter on a single point in real-time."""
-
-        if self.filter_state is None and len(self.filter_a) > 1:
-            self.filter_state = signal.lfilter_zi(self.filter_b, self.filter_a) * point
-        if self.filter_state is not None:
-            filtered_point, self.filter_state = signal.lfilter(self.filter_b, self.filter_a, [point], zi=self.filter_state)
-            return filtered_point[0]
-        return point  # Return original point if filtering is not possible
-
-    def update_mouse_plot(self):
-        """Update the mouse input signal plot dynamically."""
-        self.original_ax.clear()
-        self.original_ax.set_title("Mouse Input Signal")
-        self.original_ax.plot(self.mouse_time[-self.window_size:], self.mouse_signal[-self.window_size:], color='red')
+        # Update original signal plot
+        start = max(0, self.index - 1000)
+        self.original_plot.set_data(np.arange(start, self.index), self.signal[start:self.index])
+        self.original_ax.set_xlim(start, self.index)
         self.original_canvas.draw()
 
-        self.filtered_ax.clear()
-        self.filtered_ax.set_title("Mouse Filtered Signal")
-        self.filtered_ax.plot(self.mouse_time[-self.window_size:], self.filtered_mouse_signal[-self.window_size:], color='green')
+        # Update filtered signal plot
+        self.filtered_plot.set_data(np.arange(start, self.index), self.filtered_signal[start:self.index])
+        self.filtered_ax.set_xlim(start, self.index)
         self.filtered_canvas.draw()
-
-    def load_signal_from_mouse(self):
-        """Set the mouse-generated signal as the input signal."""
-        self.signal = np.array(self.mouse_signal)
-        self.filtered_signal = np.zeros_like(self.signal)
-        self.index = 0
-        self.compute_filter_coefficients()
 
 class PreviewWindow(QDialog):
     def __init__(self, main_window):
@@ -1152,17 +730,16 @@ class PreviewWindow(QDialog):
     
     def add_to_main(self):
         # Get the selected filter function
-        if self.main_window.enable_all_pass_checkbox.isChecked():
-            filter_name = self.main_window.all_pass_combobox.currentText()
-            if filter_name in self.main_window.all_pass_filters:
-                zeros, poles = self.main_window.all_pass_filters[filter_name]()
-                # Add to existing poles and zeros
-                self.main_window.poles.extend(poles)
-                self.main_window.zeros.extend(zeros)
-                # Update all plots
-                self.main_window.plot_z_plane()
-                self.main_window.plot_frequency_response()
-                self.main_window.plot_phase_response()
+        filter_name = self.main_window.all_pass_combobox.currentText()
+        if filter_name in self.main_window.all_pass_filters:
+            zeros, poles = self.main_window.all_pass_filters[filter_name]()
+            # Add to existing poles and zeros
+            self.main_window.poles.extend(poles)
+            self.main_window.zeros.extend(zeros)
+            # Update all plots
+            self.main_window.plot_z_plane()
+            self.main_window.plot_frequency_response()
+            self.main_window.plot_phase_response()
 
 
     def plot_pole_zero(self):
@@ -1170,13 +747,13 @@ class PreviewWindow(QDialog):
         selected_filter = self.main_window.all_pass_combobox.currentText()
 
         # Get zeros and poles for the selected filter
-        if selected_filter == 'Default first-order all-pass filter with a real pole at 0.5':
+        if selected_filter == 'Butterworth':
             zeros, poles = self.main_window.get_butterworth_filter()
-        elif selected_filter == 'Default first-order all-pass filter with a real pole at 0.7':
+        elif selected_filter == 'Chebyshev Type I':
             zeros, poles = self.main_window.get_chebyshev_filter()
-        elif selected_filter == 'Default second-order all-pass filter with complex conjugate poles':
+        elif selected_filter == 'Elliptic':
             zeros, poles = self.main_window.get_elliptic_filter()
-        elif selected_filter == 'Default first-order all-pass filter with a real pole at 0.6':
+        elif selected_filter == 'Bessel':
             zeros, poles = self.main_window.get_bessel_filter()
         else:
             return  # If no filter is selected, do nothing
@@ -1191,7 +768,7 @@ class PreviewWindow(QDialog):
         self.z_plane_ax.add_artist(unit_circle)
 
         # Set the limits to ensure the unit circle is fully visible
-        self.z_plane_ax.set_xlim(-3, 3)
+        self.z_plane_ax.set_xlim(-1.5, 1.5)
         self.z_plane_ax.set_ylim(-1.5, 1.5)
 
         # Add labels and title
@@ -1202,7 +779,7 @@ class PreviewWindow(QDialog):
         self.z_plane_ax.axvline(0, color='black', linewidth=1)
 
         # Display legend
-        self.z_plane_ax.legend(loc='upper right')
+        self.z_plane_ax.legend()
 
         # Redraw the canvas
         self.z_plane_canvas.draw()
@@ -1212,13 +789,13 @@ class PreviewWindow(QDialog):
         selected_filter = self.main_window.all_pass_combobox.currentText()
 
         # Get transfer function for the selected filter
-        if selected_filter == 'Default first-order all-pass filter with a real pole at 0.5':
+        if selected_filter == 'Butterworth':
             b, a = self.main_window.get_butterworth_filter()
-        elif selected_filter == 'Default first-order all-pass filter with a real pole at 0.7':
+        elif selected_filter == 'Chebyshev Type I':
             b, a = self.main_window.get_chebyshev_filter()
-        elif selected_filter == 'Default second-order all-pass filter with complex conjugate poles':
+        elif selected_filter == 'Elliptic':
             b, a = self.main_window.get_elliptic_filter()
-        elif selected_filter == 'Default first-order all-pass filter with a real pole at 0.6':
+        elif selected_filter == 'Bessel':
             b, a = self.main_window.get_bessel_filter()
         else:
             return  # If no filter is selected, do nothing
@@ -1231,7 +808,7 @@ class PreviewWindow(QDialog):
         self.phase_ax.set_title('Phase Response')
         self.phase_ax.set_xlabel('Frequency (rad/sample)')
         self.phase_ax.set_ylabel('Phase (radians)')
-        self.phase_ax.legend(loc='upper right')
+        self.phase_ax.legend()
 
         self.phase_canvas.draw()
 
