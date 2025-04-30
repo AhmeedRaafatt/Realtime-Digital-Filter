@@ -1,6 +1,6 @@
 # Realtime Digital Filter Design
 
-![Project Logo](https://via.placeholder.com/1000x200?text=Realtime+Digital+Filter+Design)
+
 
 ## Overview
 Realtime Digital Filter Design is an interactive desktop application that allows users to design and visualize digital filters through zero-pole placement on the z-plane. The application supports various customization options, real-time signal processing, and filter realization, making it an invaluable tool for engineers, researchers, and enthusiasts in signal processing.
